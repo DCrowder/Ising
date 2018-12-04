@@ -8,13 +8,10 @@ import Ising
 class TestIsingModel(TestCase):
     def setUp(self, n=10):
         self.ising = Ising.IsingModel(n)
+        self.ising.T = 50
+        self.ising.J = 1
+        self.ising.H = 0
         self.n = n
-
-    def test_calc_mag(self):
-        self.fail()
-
-    def test_calc_energy(self):
-        self.fail()
 
     def test_flip_state(self):
         old_box = self.ising.box
