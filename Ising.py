@@ -5,7 +5,7 @@ import numpy as np
 
 class IsingModel:
 
-    def __init__(self, n, J, H, Tk):
+    def __init__(self, n, J, H):
         """Initializes system into a pair of N states.
 
             Takes the parameter n:
@@ -21,8 +21,6 @@ class IsingModel:
         self.n = n
         self.J = J
         self.H = 2*mu_B*H  # Convert from A/m to joules
-        self.T = k_B*Tk  # Convert from K to joules
-        self.beta = 1 / (k_B * T)  # Reciprocal temperature in J^-1
         self.box = 2*np.random.randint(2, size=(n, n)) - 1
 
     def __name__(self):
@@ -31,7 +29,7 @@ class IsingModel:
 
     def calc_mag(self):
         """Calculates the magnetization of a given configuration"""
-        mag = sum(self.box)
+        mag = np.sum(self.box)
         return mag
 
     def calc_energy(self, box):
@@ -45,17 +43,19 @@ class IsingModel:
                 # current site spin
                 s = box[i, j]
                 # Neighboring spins to the right and up.  All spins are accounted for this way
-                nb = box[(i+1) % n, j] + box[i, (j+1) % n]
+                nb = box[(i+1) % n, j] + box[i, (j+1) % n] + box[(i-1) % n, j] + box[i, (j-1) % n]
                 sum1 += nb*s
 
+        sum1 /= 4
+
         # Sum over all the states
-        sum2 = sum(box)
+        sum2 = np.sum(box)
 
         # exchange interaction energy + magnetic energy
         energy = -1*self.J*sum1 - self.H*sum2
         return energy
 
-    def mc_move(self):
+    def mc_move(self, beta):
         """One monte carlo move.
             Step 2: Choose a spin at random and flip it (flip_state()).
             Step 3: Compute dE = E_trial - E_old.  This is the change in energy due to a trial flip.
@@ -77,48 +77,11 @@ class IsingModel:
             self.box = test_box
         else:
             r = np.random.rand()
-            w = np.exp(-self.beta*dE)
+            w = np.exp(-beta*dE)
             if r <= w:
                 self.box = test_box
 
         return
-
-
-    def mc_tick(self):
-        """Step 8: Repeat mc_move until all spins of the system are tested.
-            One sweep counts as one unit of Monte Carlo time"""
-        N, T = 64, .4
-
-
-
-
-    def thermalize(self, epsilon):
-        """Step 9: Repeat mc_tick until thermalization occurs (equilibrium)."""
-
-
-    def compute_properties(self):
-        """Step 10: Compute the physical quantities of interest in n thermalized microstates.
-            Do this periodically to reduce correlation between data points"""
-
-
-
-    def compute_averages(self):
-        """Step 11: Find averages of M, magnetization and E, energy of the entire system"""
-
-
-    def compute_Cv(self):
-        """Calculates the specific heat"""
-        term1 = exp_val(self.E)
-        term2 = pow(exp_val(self.E), 2)
-        Cv = self.beta/self.T * (term1 - term2)
-
-        return Cv
-
-    def compute_chi(self):
-        """Calculates the susceptibility"""
-        term1 = exp_val(self.M)
-        term2 = pow(exp_val(self.M), 2)
-        Cv = self.beta * (term1 - term2)
 
 
 """ METHODS OUTSIDE CLASS """
@@ -136,16 +99,7 @@ def flip_state(box):
 
     box[i, j] *= -1  # flip from 1 to -1 or -1 to 1
 
-    # print "index i=", i, " and index j=", j
     return box
-
-
-def exp_val(A, n):
-    """Find the expectation value of the given param
-        A is an iterable ndarray of values, e.g. E or M
-        n is the dimension of the box"""
-    return sum(A)/n
-
 
 
 """
@@ -163,13 +117,53 @@ Initial conditions
 
 """
 
-# Can be user defined
+# Physical parameters
 J = 1  # Exchange interaction J > 0
-T = 2.26918531421  # Temperature in Kelvin
+Tc = 2.26918531421  # Critical Temperature in Kelvin
 H = 0  # Magnetic field
 
+#
+nt = 88 # Number of temperature points
 n = 4  # Total number of indices in the box
 N = n*n  # total number of states in the system
+eqSteps = 1024  # Number of MC sweeps for equilibration
+mcSteps = 1024  # Number of MC sweeps for calculation
+
+# Generates nt samples from start to stop temperatures.  Returns an ndarray
+T = np.linspace(1.53, 3.28, nt)
+
+# Properties of interest
+E, M, C, X = np.zeros(nt), np.zeros(nt), np.zeros(nt), np.zeros(nt) # Returns ndarrays of nt samples
+
+# Divide by number of samples and system size to get intensive values
+n1, n2 = 1.0/(mcSteps*N), 1.0/(mcSteps*mcSteps*N)
+
+# Iterate over the temperature samples
+for tt in range(nt):
+    E1 = M1 = E2 = M2 = 0  # Initialize averages
+    config = IsingModel(n, J, H)  # Initialize states
+    iT=1.0/T[tt]; iT2=iT*iT  # beta value and beta squared
+
+    for i in range(eqSteps):    # iterate until equilibrium
+        config.mc_move(iT)
+
+    for i in range(mcSteps):
+        config.mc_move(iT)
+
+        Ene = config.calc_energy(config.box)  # calculate the energy
+        Mag = config.calc_mag()   # calculate magnetization
+
+        E1 += Ene
+        M1 += Mag
+        M2 += Mag*Mag
+        E2 += Ene*Ene
+
+    E[tt] = n1*E1   # Energy ndarray
+    M[tt] = n1*M1   # Magnetization ndarray
+    C[tt] = iT2*(n1*E2 - n2*E1*E1)
+    X[tt] = iT*(n1*M2 - n2*M1*M1)
+
+    print >> sys.stdout, 1/iT, E[tt], M[tt], C[tt], X[tt]
 
 
 
